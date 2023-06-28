@@ -1,0 +1,25 @@
+{
+  "name": "aliyun-dns-update",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "dev": "nodemon"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@alicloud/alidns20150109": "^3.0.7",
+    "@alicloud/openapi-client": "^0.4.6",
+    "@alicloud/tea-typescript": "^1.8.0",
+    "@alicloud/tea-util": "^1.4.6",
+    "@types/node": "^20.3.2",
+    "dotenv": "^16.3.1",
+    "nodemon": "^2.0.22",
+    "public-ip": "^6.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.5"
+  }
+}
