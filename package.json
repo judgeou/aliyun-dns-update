@@ -16,6 +16,7 @@
     "@alicloud/tea-typescript": "^1.8.0",
     "@alicloud/tea-util": "^1.4.6",
     "@types/node": "^20.3.2",
+    "dayjs": "^1.11.8",
     "dotenv": "^16.3.1",
     "nodemon": "^2.0.22",
     "public-ip": "^6.0.1",

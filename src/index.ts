@@ -3,6 +3,7 @@ import OpenApi, * as $OpenApi from '@alicloud/openapi-client';
 import Util, * as $Util from '@alicloud/tea-util';
 import { config } from 'dotenv'
 import https from 'https'
+import dayjs from 'dayjs'
 
 config();
 
@@ -45,7 +46,7 @@ async function getDomainIp () {
       return record[0]
     }
   } catch (err) {
-    Util.assertAsString(err.message)
+    Util.assertAsString((err as any).message)
   }
 }
 
@@ -63,7 +64,7 @@ async function setDomainIp (ip: string, recordId: string) {
 
 async function getMyIp () {
   return new Promise<string>((resolve, reject) => {
-    https.get('https://api.ipify.org', (res) => {
+    https.get('https://x.oza-oza.top:4321', (res) => {
       let data = '';
   
       res.on('data', (chunk) => {
@@ -82,18 +83,28 @@ async function getMyIp () {
 async function updateIp () {
   const domainIp = await getDomainIp()
   const myIp = await getMyIp()
+  const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
   if (domainIp && domainIp.value !== myIp) {
-    console.log('ip changed: ' + myIp)
+    console.log(`[${now}] ip changed: ${myIp}`)
     await setDomainIp(myIp, domainIp.recordId!)
     console.log('ip updated')
   } else {
-    console.log('ip not changed')
+    console.log(`[${now}] ip not changed`)
   }
 }
 
-async function main () {
+async function wait (ms: number) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms)
+  })
+}
 
+async function main () {
+  while (1) {
+    updateIp()
+    await wait(1000 * 60)
+  }
 }
 
 main()
