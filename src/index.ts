@@ -64,7 +64,7 @@ async function setDomainIp (ip: string, recordId: string) {
 
 async function getMyIp () {
   return new Promise<string>((resolve, reject) => {
-    https.get('https://x.oza-oza.top:4321', (res) => {
+    const req = https.get('https://x.oza-oza.top:4321', (res) => {
       let data = '';
   
       res.on('data', (chunk) => {
@@ -77,6 +77,8 @@ async function getMyIp () {
 
       res.on('error', reject)
     })
+
+    req.on('error', reject)
   })
 }
 
@@ -102,7 +104,11 @@ async function wait (ms: number) {
 
 async function main () {
   while (1) {
-    updateIp()
+    try {
+      await updateIp()
+    } catch (err) {
+      console.error(err)
+    }
     await wait(1000 * 60)
   }
 }
