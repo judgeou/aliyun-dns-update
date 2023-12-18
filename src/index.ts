@@ -4,6 +4,7 @@ import Util, * as $Util from '@alicloud/tea-util';
 import { config } from 'dotenv'
 import https from 'https'
 import dayjs from 'dayjs'
+import os from 'node:os'
 
 config();
 
@@ -82,6 +83,26 @@ async function getMyIp () {
   })
 }
 
+function getMyIpv6 () {
+  const interfaces = os.networkInterfaces()
+  const faceNames = Object.keys(interfaces)
+
+  for (let faceName of faceNames) {
+    const iface = interfaces[faceName]
+    const iface_r = iface?.filter(item => 
+      item.family === 'IPv6' && 
+      item.internal === false &&
+      /^2\w\w\w:.+/.test(item.address)
+    )
+    if (iface_r && iface_r?.length > 0) {
+      iface_r.sort((a, b) => a.address.length - b.address.length)
+      return iface_r[0].address
+    }
+  }
+
+  return null
+}
+
 async function updateIp () {
   const domainIp = await getDomainIp()
   const myIp = await getMyIp()
@@ -113,4 +134,5 @@ async function main () {
   }
 }
 
-main()
+let r = getMyIpv6()
+console.log(r)
