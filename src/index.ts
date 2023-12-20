@@ -31,11 +31,11 @@ class Client {
   }
 }
 
-async function getDomainIp () {
+async function getDomainIp (type = 'A') {
   const client = Client.createClient();
   const describeDomainRecordsRequest = new $Alidns20150109.DescribeDomainRecordsRequest({
     domainName: ALIBABA_CLOUD_DOMAIN_NAME,
-    type: 'A',
+    type: type,
     RRKeyWord: ALIBABA_CLOUD_DOMAIN_RRKEYWORD
   })
   const runtime = new $Util.RuntimeOptions({});
@@ -51,12 +51,12 @@ async function getDomainIp () {
   }
 }
 
-async function setDomainIp (ip: string, recordId: string) {
+async function setDomainIp (ip: string, recordId: string, type = 'A') {
   const client = Client.createClient();
   const updateDomainRecordRequest = new $Alidns20150109.UpdateDomainRecordRequest({
     recordId,
     RR: "@",
-    type: "A",
+    type,
     value: ip,
   })
   const runtime = new $Util.RuntimeOptions({ });
@@ -109,11 +109,25 @@ async function updateIp () {
   const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
   if (domainIp && domainIp.value !== myIp) {
-    console.log(`[${now}] ip changed: ${myIp}`)
+    console.log(`[${now}] ipv4 changed: ${myIp}`)
     await setDomainIp(myIp, domainIp.recordId!)
-    console.log('ip updated')
+    console.log('ipv4 updated')
   } else {
-    console.log(`[${now}] ip not changed`)
+    console.log(`[${now}] ipv4 not changed`)
+  }
+}
+
+async function updateIpv6 () {
+  const domainIpv6 = await getDomainIp('AAAA')
+  const myIpv6 = getMyIpv6()
+  const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
+
+  if (myIpv6 && domainIpv6 && domainIpv6.value !== myIpv6) {
+    console.log(`[${now}] ipv6 changed: ${myIpv6}`)
+    await setDomainIp(myIpv6, domainIpv6.recordId!, 'AAAA')
+    console.log('ipv6 updated')
+  } else {
+    console.log(`[${now}] ipv6 not changed`)
   }
 }
 
@@ -127,6 +141,7 @@ async function main () {
   while (1) {
     try {
       await updateIp()
+      await updateIpv6()
     } catch (err) {
       console.error(err)
     }
@@ -134,5 +149,4 @@ async function main () {
   }
 }
 
-let r = getMyIpv6()
-console.log(r)
+main()
