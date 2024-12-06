@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/index.ts",
+    "start2": "tsx src/showipv6.ts",
     "dev": "nodemon"
   },
   "keywords": [],

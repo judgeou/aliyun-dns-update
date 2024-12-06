@@ -5,10 +5,45 @@ import { config } from 'dotenv'
 import https from 'https'
 import dayjs from 'dayjs'
 import os from 'node:os'
+import { spawn } from 'child_process'
+import { TextDecoder } from 'util'
 
 config();
 
 const { ALIBABA_CLOUD_DOMAIN_NAME, ALIBABA_CLOUD_DOMAIN_RRKEYWORD } = process.env
+
+function extractNumber (str: string, c: string) {
+  const regex = new RegExp(`(\\d+)${c}`)
+  const match = str.match(regex) || []
+  return Number(match[1] || 0)
+}
+
+function extractSecond (str: string) {
+  return extractNumber(str, 'd') * 86400 + extractNumber(str, 'h') * 3600 + extractNumber(str, 'm') * 60 + extractNumber(str, 's')
+}
+
+async function exec_return_string (cmd, args, encoding = 'utf-8') : Promise<string> {
+  return new Promise((resolve, reject) => {
+    let process = spawn(cmd, args)
+    let buffers = [] as any[]
+  
+    process.stdout.on('data', async (data: any) => {
+      buffers.push(data)
+    })
+  
+    process.stderr.on('data', (data) => {
+      reject(data)
+    })
+
+    process.on('close', async code => {
+      if (code === 0) {
+        let bdata = Buffer.concat(buffers)
+        const decoder = new TextDecoder(encoding)
+        resolve(decoder.decode(bdata))
+      }
+    })
+  })
+}
 
 class Client {
   /**
@@ -31,12 +66,12 @@ class Client {
   }
 }
 
-async function getDomainIp (type = 'A') {
+async function getDomainIp (type = 'A', rrkeyword?: string) {
   const client = Client.createClient();
   const describeDomainRecordsRequest = new $Alidns20150109.DescribeDomainRecordsRequest({
     domainName: ALIBABA_CLOUD_DOMAIN_NAME,
     type: type,
-    RRKeyWord: ALIBABA_CLOUD_DOMAIN_RRKEYWORD
+    RRKeyWord: rrkeyword || ALIBABA_CLOUD_DOMAIN_RRKEYWORD
   })
   const runtime = new $Util.RuntimeOptions({});
   try {
@@ -44,18 +79,20 @@ async function getDomainIp (type = 'A') {
     const record = body.domainRecords?.record
 
     if (record && record.length > 0) {
-      return record[0]
+      return record
     }
   } catch (err) {
     Util.assertAsString((err as any).message)
   }
+
+  return []
 }
 
-async function setDomainIp (ip: string, recordId: string, type = 'A') {
+async function setDomainIp (ip: string, recordId: string, type = 'A', rrkeyword?: string) {
   const client = Client.createClient();
   const updateDomainRecordRequest = new $Alidns20150109.UpdateDomainRecordRequest({
     recordId,
-    RR: "@",
+    RR: rrkeyword || ALIBABA_CLOUD_DOMAIN_RRKEYWORD,
     type,
     value: ip,
   })
@@ -86,6 +123,7 @@ async function getMyIp () {
 function getMyIpv6 () {
   const interfaces = os.networkInterfaces()
   const faceNames = Object.keys(interfaces)
+  let ipv6arr = [] as string[]
 
   for (let faceName of faceNames) {
     const iface = interfaces[faceName]
@@ -94,17 +132,61 @@ function getMyIpv6 () {
       item.internal === false &&
       /^2\w\w\w:.+/.test(item.address)
     )
-    if (iface_r && iface_r?.length > 0) {
-      iface_r.sort((a, b) => a.address.length - b.address.length)
-      return iface_r[0].address
-    }
+    const iface_r_addr = iface_r?.map(item => item.address)
+    console.log(iface_r)
+
+    ipv6arr = ipv6arr.concat(iface_r_addr || [])
   }
 
-  return null
+  return ipv6arr
+}
+
+async function getIpv6LongLife () {
+  const data = await exec_return_string('netsh', ['interface', 'ipv6', 'show', 'address'], 'gbk')
+  const arr1 = data.match(/(公用|DHCP) +首选项 +\w+ +\w+ +[a-z0-9\:]+/gm) || []
+  const arr2 = arr1.map((item: string) => {
+    const m = item.match(/(公用|DHCP) +首选项 +\w+ +(\w+) +([a-z0-9\:]+)/) || []
+    return {
+      life: extractSecond(m[2]),
+      address: m[3]
+    }
+  })
+  const finalAddress = arr2.sort((a, b) => b.life - a.life)[0]
+
+  console.log(arr2)
+  return finalAddress
+}
+
+async function getipv6_remote () {
+  const data = await new Promise<string>((resolve, reject) => {
+    const chunks = [] as Buffer[]
+    const req = https.request({
+      method: 'GET',
+      hostname: 'ipv6.lookup.test-ipv6.com',
+      path: '/ip/?asn=1&testdomain=test-ipv6.com&testname=test_asn6',
+      port: 443
+    }, res => {
+      res.on('data', chunk => {
+        chunks.push(chunk)
+      })
+  
+      res.on('end', () => {
+        resolve(Buffer.concat(chunks).toString())
+      })
+
+      res.on('error', reject)
+    })
+
+    req.on('error', reject)
+    req.end()
+  })
+
+  const info = JSON.parse(data)
+  return info.ip
 }
 
 async function updateIp () {
-  const domainIp = await getDomainIp()
+  const domainIp = (await getDomainIp())[0]
   const myIp = await getMyIp()
   const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
@@ -118,13 +200,21 @@ async function updateIp () {
 }
 
 async function updateIpv6 () {
-  const domainIpv6 = await getDomainIp('AAAA')
-  const myIpv6 = getMyIpv6()
+  const domainIpv6 = (await getDomainIp('AAAA'))[0]
+  const domainIpv6_2 = (await getDomainIp('AAAA', 'ipv6'))[0]
+  let myIpv6: any = null
+  try {
+    myIpv6 = await getipv6_remote()
+  } catch {
+    myIpv6 = (await getIpv6LongLife()).address
+  }
+
   const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
   if (myIpv6 && domainIpv6 && domainIpv6.value !== myIpv6) {
     console.log(`[${now}] ipv6 changed: ${myIpv6}`)
     await setDomainIp(myIpv6, domainIpv6.recordId!, 'AAAA')
+    await setDomainIp(myIpv6, domainIpv6_2.recordId!, 'AAAA', 'ipv6')
     console.log('ipv6 updated')
   } else {
     console.log(`[${now}] ipv6 not changed`)
