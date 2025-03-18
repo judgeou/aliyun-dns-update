@@ -3,6 +3,7 @@ import OpenApi, * as $OpenApi from '@alicloud/openapi-client';
 import Util, * as $Util from '@alicloud/tea-util';
 import { config } from 'dotenv'
 import https from 'https'
+import http from 'http'
 import dayjs from 'dayjs'
 import os from 'node:os'
 import { spawn } from 'child_process'
@@ -100,9 +101,30 @@ async function setDomainIp (ip: string, recordId: string, type = 'A', rrkeyword?
   await client.updateDomainRecordWithOptions(updateDomainRecordRequest, runtime);
 }
 
+async function addDomainIp (ip: string, type = 'A', rrkeyword?: string) {
+  const client = Client.createClient();
+  const addDomainRecordRequest = new $Alidns20150109.AddDomainRecordRequest({
+    domainName: ALIBABA_CLOUD_DOMAIN_NAME,
+    RR: rrkeyword || ALIBABA_CLOUD_DOMAIN_RRKEYWORD,
+    type: type,
+    value: ip,
+  })
+  const runtime = new $Util.RuntimeOptions({ });
+  await client.addDomainRecordWithOptions(addDomainRecordRequest, runtime);
+}
+
+async function deleteDomainIp (recordId: string) {
+  const client = Client.createClient();
+  const deleteDomainRecordRequest = new $Alidns20150109.DeleteDomainRecordRequest({
+    recordId,
+  })
+  const runtime = new $Util.RuntimeOptions({ });
+  await client.deleteDomainRecordWithOptions(deleteDomainRecordRequest, runtime);
+}
+
 async function getMyIp () {
   return new Promise<string>((resolve, reject) => {
-    const req = https.get('https://x.oza-oza.top:4321', (res) => {
+    const req = http.get('http://x.oza-oza.top:4322', (res) => {
       let data = '';
   
       res.on('data', (chunk) => {
@@ -141,7 +163,7 @@ function getMyIpv6 () {
   return ipv6arr
 }
 
-async function getIpv6LongLife () {
+async function getIpv6Array () {
   const data = await exec_return_string('netsh', ['interface', 'ipv6', 'show', 'address'], 'gbk')
   const arr1 = data.match(/(公用|DHCP) +首选项 +\w+ +\w+ +[a-z0-9\:]+/gm) || []
   const arr2 = arr1.map((item: string) => {
@@ -151,9 +173,14 @@ async function getIpv6LongLife () {
       address: m[3]
     }
   })
+
+  return arr2
+}
+
+async function getIpv6LongLife () {
+  const arr2 = await getIpv6Array()
   const finalAddress = arr2.sort((a, b) => b.life - a.life)[0]
 
-  console.log(arr2)
   return finalAddress
 }
 
@@ -199,6 +226,36 @@ async function updateIp () {
   }
 }
 
+async function updateIpv6_mutil () {
+  const local_ipv6_list = await getIpv6Array()
+  const remote_ipv6_list = await getDomainIp('AAAA')
+  const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
+
+  for (let local_ipv6 of local_ipv6_list) {
+    const remote_ipv6 = remote_ipv6_list.find(item => item.value === local_ipv6.address)
+
+    if (!remote_ipv6) {
+      await addDomainIp(local_ipv6.address, 'AAAA')
+      console.log(`[${now}] 添加新的IPv6地址: ${local_ipv6.address}`)
+    } else {
+      if (local_ipv6.address !== remote_ipv6.value) {
+        await setDomainIp(local_ipv6.address, remote_ipv6.recordId!, 'AAAA')
+        console.log(`[${now}] 更新IPv6地址: ${local_ipv6.address}`)
+      }
+    }
+  }
+
+  for (let remote_ipv6 of remote_ipv6_list) {
+    const local_ipv6 = local_ipv6_list.find(item => item.address === remote_ipv6.value)
+    if (!local_ipv6) {
+      await deleteDomainIp(remote_ipv6.recordId!)
+      console.log(`[${now}] 删除无效的IPv6地址: ${remote_ipv6.value}`)
+    }
+  }
+
+  console.log(`[${now}] 完成IPv6地址更新`)
+}
+
 async function updateIpv6 () {
   const domainIpv6 = (await getDomainIp('AAAA'))[0]
   const domainIpv6_2 = (await getDomainIp('AAAA', 'ipv6'))[0]
@@ -230,8 +287,8 @@ async function wait (ms: number) {
 async function main () {
   while (1) {
     try {
-      await updateIp()
-      await updateIpv6()
+      updateIp().catch(console.log)
+      updateIpv6_mutil().catch(console.log)
     } catch (err) {
       console.error(err)
     }
